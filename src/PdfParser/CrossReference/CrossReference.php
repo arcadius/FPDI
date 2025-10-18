@@ -156,6 +156,17 @@ class CrossReference
      */
     public function getIndirectObject($objectNumber)
     {
+        // First check if the object is in an object stream
+        foreach ($this->readers as $reader) {
+            if ($reader instanceof CompressedReader) {
+                $entry = $reader->getEntryFor($objectNumber);
+                if ($entry && $entry['type'] === 2) {
+                    // Object is in an object stream
+                    return $reader->getObjectFromStream($objectNumber, $entry['offset']);
+                }
+            }
+        }
+
         $offset = $this->getOffsetFor($objectNumber);
         if ($offset === false) {
             throw new CrossReferenceException(
@@ -254,11 +265,10 @@ class CrossReference
 
             $this->checkForEncryption($stream->value);
 
-            throw new CrossReferenceException(
-                'This PDF document probably uses a compression technique which is not supported by the ' .
-                'free parser shipped with FPDI. (See https://www.setasign.com/fpdi-pdf-parser for more details)',
-                CrossReferenceException::COMPRESSED_XREF
-            );
+            // Use the new CompressedReader for xref streams
+            $reader = new CompressedReader($this->parser, $stream);
+            $reader->setFileHeaderOffset($this->fileHeaderOffset);
+            return $reader;
         }
 
         throw new CrossReferenceException(
